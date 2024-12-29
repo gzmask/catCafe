@@ -87,5 +87,6 @@
     (dispose []
       (let [{:keys [batch player-standing-texture player-walking-texture]} @game-state]
         (.dispose batch)
-	(.dispose player-walking-texture)
+	(doseq [frame (.getKeyFrames player-walking-texture)]
+	  (.dispose (.getTexture frame)))
         (.dispose player-standing-texture)))))
