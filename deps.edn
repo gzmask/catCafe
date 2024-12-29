@@ -1,0 +1,9 @@
+{
+  :paths ["src" "assets"]                ;; Source code directory
+  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+	 com.badlogicgames.gdx/gdx {:mvn/version "1.11.0"}
+	 com.badlogicgames.gdx/gdx-backend-lwjgl3 {:mvn/version "1.11.0"}
+	 com.badlogicgames.gdx/gdx-platform$natives-desktop {:mvn/version "1.11.0"}}
+  :aliases {:run-game {:jvm-opts ["-XstartOnFirstThread"]
+		       :main-opts ["-m" "catcafe.desktop-launcher"]}}
+ }
