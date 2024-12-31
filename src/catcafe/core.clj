@@ -11,6 +11,8 @@
 (defn create-initial-state []
   {:player-x 400 
    :player-y 300
+   :table-x 200
+   :table-y 150
    :animation-time 0
    :is-moving false})
 
@@ -28,19 +30,22 @@
       (let [camera (OrthographicCamera.)
             batch (SpriteBatch.)
             player-standing-texture (Texture. "images/kate_standing.png")
-	    player-walking-texture (create-walking-animation)]
+            player-walking-texture (create-walking-animation)
+            table-texture (Texture. "images/table.png")]
         (.setToOrtho camera false 800 600)
         (reset! game-state 
                 (assoc (create-initial-state)
                        :camera camera
                        :batch batch
                        :player-standing-texture player-standing-texture
-                       :player-walking-texture player-walking-texture))))
+                       :player-walking-texture player-walking-texture
+                       :table-texture table-texture))))
 
     (render []
       (let [{:keys [camera batch player-standing-texture
-		    player-walking-texture animation-time
-                    player-x player-y]} @game-state
+                    player-walking-texture animation-time
+                    player-x player-y table-texture
+                    table-x table-y]} @game-state
             delta (.getDeltaTime Gdx/graphics)]
         
         ; Clear screen
@@ -76,7 +81,13 @@
                  :is-moving is-moving))
 
         ; Draw
-	(.begin batch)
+        (.begin batch)
+        ; Draw table first (so it appears behind the player)
+        (.draw batch table-texture 
+               (float table-x) (float table-y) 
+               (float 128) (float 128))  ; Adjust size as needed
+        
+        ; Draw player (existing code)
         (let [current-frame (if (:is-moving @game-state)
                              (.getKeyFrame player-walking-texture animation-time true)
                              player-standing-texture)]
@@ -85,8 +96,10 @@
         (.end batch)))
 
     (dispose []
-      (let [{:keys [batch player-standing-texture player-walking-texture]} @game-state]
+      (let [{:keys [batch player-standing-texture 
+                    player-walking-texture table-texture]} @game-state]
         (.dispose batch)
-	(doseq [frame (.getKeyFrames player-walking-texture)]
-	  (.dispose (.getTexture frame)))
-        (.dispose player-standing-texture)))))
+        (doseq [frame (.getKeyFrames player-walking-texture)]
+          (.dispose (.getTexture frame)))
+        (.dispose player-standing-texture)
+        (.dispose table-texture)))))
