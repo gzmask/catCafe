@@ -102,8 +102,8 @@
 
               ;; Check for collision at new position
               ;; Using smaller collision boxes for better feel (adjusting the size and offset)
-              player-collision-size 80  ; Smaller than visual size
-              table-collision-size 100  ; Smaller than visual size
+              player-collision-size 54  ; Smaller than visual size
+              table-collision-size 66  ; Smaller than visual size
               collision? (check-collision
                            potential-x potential-y
                            player-collision-size player-collision-size
@@ -128,14 +128,14 @@
         ;; Draw table first (so it appears behind the player)
         (.draw batch table-texture
                (float table-x) (float table-y)
-               (float 128) (float 128))  ; Adjust size as needed
+               (float 66) (float 51))  ; Adjust size as needed
 
         ;; Draw player (existing code)
         (let [current-frame (if (:is-moving @game-state)
                               (.getKeyFrame player-walking-texture animation-time true)
                               player-standing-texture)]
           (.draw batch current-frame
-                 (float player-x) (float player-y) (float 128) (float 128)))
+                 (float player-x) (float player-y) (float 54) (float 78)))
         (.end batch)))
 
     (dispose
