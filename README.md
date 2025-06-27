@@ -28,7 +28,7 @@ To run this game, you'll need:
 ## Game Controls
 
 - Use the arrow keys (UP, DOWN, LEFT, RIGHT) to move the character around
-- Avoid colliding with objects like tables
+- Avoid colliding with obstacles
 
 ## Project Structure
 
