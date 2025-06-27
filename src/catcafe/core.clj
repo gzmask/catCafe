@@ -88,6 +88,12 @@
         frames (into-array TextureRegion [region1 region2])]
     (Animation. (float animation-frame-duration) frames)))
 
+;; Utility to dispose all textures associated with an animation
+(defn dispose-animation-textures
+  [^Animation animation]
+  (doseq [^TextureRegion frame (.getKeyFrames animation)]
+    (.dispose (.getTexture frame))))
+
 
 (defn check-collision
   [x1 y1 w1 h1 x2 y2 w2 h2]
@@ -268,13 +274,14 @@
         (.dispose (.getTexture standing-sprite-right))
         ;; No need to dispose standing-sprite-left as it uses the same texture
 
-        (doseq [frame (.getKeyFrames walking-animation-right)]
-          (.dispose (.getTexture frame)))
-        ;; No need to dispose walking-animation-left frames as they use the same textures
+        ;; Dispose player walking animation textures
+        (dispose-animation-textures walking-animation-right)
+        (dispose-animation-textures walking-animation-left)
 
         ;; Dispose Maia textures
         (.dispose (.getTexture maia-standing-sprite-right))
-        (doseq [frame (.getKeyFrames maia-walking-animation-right)]
-          (.dispose (.getTexture frame)))
+        ;; Dispose Maia walking animation textures
+        (dispose-animation-textures maia-walking-animation-right)
+        (dispose-animation-textures maia-walking-animation-left)
 
         (.dispose hallway-bg-texture)))))
