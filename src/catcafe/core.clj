@@ -93,6 +93,144 @@
 (defn bounds-comp [min-x max-x min-y max-y collision-size] (->BoundsComp min-x max-x min-y max-y collision-size))
 (defn render-order-comp [layer] (->RenderOrderComp layer))
 
+;; Entity factory functions
+(defn create-player-entity! [x y standing-sprite-right standing-sprite-left walking-animation-right walking-animation-left]
+  (let [player-id (create-entity!)]
+    (add-component! player-id :position (position x y))
+    (add-component! player-id :velocity (velocity 0 0 player-speed))
+    (add-component! player-id :animation-comp (animation-comp :standing
+                                                              {:walking-right walking-animation-right
+                                                               :walking-left walking-animation-left}
+                                                              0
+                                                              animation-frame-duration))
+    (add-component! player-id :sprite-comp (sprite-comp {:standing-right standing-sprite-right
+                                                         :standing-left standing-sprite-left}
+                                                        player-visual-width
+                                                        player-visual-height
+                                                        true))
+    (add-component! player-id :input-comp (input-comp #{:left :right :up :down} #{}))
+    (add-component! player-id :bounds-comp (bounds-comp floor-x-min floor-x-max floor-y-min floor-y-max player-collision-size))
+    (add-component! player-id :render-order-comp (render-order-comp 2))
+    player-id))
+
+(defn create-npc-entity! [x y standing-sprite-right standing-sprite-left walking-animation-right walking-animation-left]
+  (let [npc-id (create-entity!)]
+    (add-component! npc-id :position (position x y))
+    (add-component! npc-id :velocity (velocity 0 0 npc-speed))
+    (add-component! npc-id :animation-comp (animation-comp :standing
+                                                           {:walking-right walking-animation-right
+                                                            :walking-left walking-animation-left}
+                                                           0
+                                                           animation-frame-duration))
+    (add-component! npc-id :sprite-comp (sprite-comp {:standing-right standing-sprite-right
+                                                      :standing-left standing-sprite-left}
+                                                     npc-visual-width
+                                                     npc-visual-height
+                                                     true))
+    (add-component! npc-id :ai-comp (ai-comp :wandering 0 npc-direction-change-interval true))
+    (add-component! npc-id :bounds-comp (bounds-comp floor-x-min floor-x-max floor-y-min floor-y-max player-collision-size))
+    (add-component! npc-id :render-order-comp (render-order-comp 1))
+    npc-id))
+
+;; ECS Systems
+(defn input-system [delta]
+  (doseq [entity-id (get-entities-with-components [:input-comp :velocity])]
+    (let [input-comp (get-component entity-id :input-comp)
+          moving-left? (.isKeyPressed Gdx/input Input$Keys/LEFT)
+          moving-right? (.isKeyPressed Gdx/input Input$Keys/RIGHT)
+          moving-up? (.isKeyPressed Gdx/input Input$Keys/UP)
+          moving-down? (.isKeyPressed Gdx/input Input$Keys/DOWN)
+          is-moving (or moving-left? moving-right? moving-up? moving-down?)
+          
+          new-dx (cond moving-left? -1 moving-right? 1 :else 0)
+          new-dy (cond moving-down? -1 moving-up? 1 :else 0)
+          
+          velocity-comp (get-component entity-id :velocity)
+          new-velocity (->Velocity new-dx new-dy (:speed velocity-comp))
+          
+          sprite-comp (get-component entity-id :sprite-comp)
+          new-facing-right (cond moving-right? true moving-left? false :else (:facing-right sprite-comp))
+          new-sprite-comp (->SpriteComp (:texture sprite-comp) (:width sprite-comp) (:height sprite-comp) new-facing-right)]
+      
+      (add-component! entity-id :velocity new-velocity)
+      (add-component! entity-id :sprite-comp new-sprite-comp))))
+
+(defn ai-system [delta]
+  (doseq [entity-id (get-entities-with-components [:ai-comp :velocity])]
+    (let [ai-comp (get-component entity-id :ai-comp)
+          new-direction-timer (+ (:direction-timer ai-comp) delta)
+          
+          [new-moving-right new-timer] (if (>= new-direction-timer (:direction-change-interval ai-comp))
+                                         [(not (:moving-right ai-comp)) 0]
+                                         [(:moving-right ai-comp) new-direction-timer])
+          
+          new-dx (if new-moving-right 1 -1)
+          velocity-comp (get-component entity-id :velocity)
+          new-velocity (->Velocity new-dx 0 (:speed velocity-comp))
+          
+          new-ai-comp (->AIComp (:type ai-comp) new-timer (:direction-change-interval ai-comp) new-moving-right)
+          
+          sprite-comp (get-component entity-id :sprite-comp)
+          new-sprite-comp (->SpriteComp (:texture sprite-comp) (:width sprite-comp) (:height sprite-comp) new-moving-right)]
+      
+      (add-component! entity-id :ai-comp new-ai-comp)
+      (add-component! entity-id :velocity new-velocity)
+      (add-component! entity-id :sprite-comp new-sprite-comp))))
+
+(defn movement-system [delta]
+  (doseq [entity-id (get-entities-with-components [:position :velocity :bounds-comp])]
+    (let [pos (get-component entity-id :position)
+          vel (get-component entity-id :velocity)
+          bounds (get-component entity-id :bounds-comp)
+          
+          new-x (cond
+                  (< (:dx vel) 0) (max (:min-x bounds) (+ (:x pos) (* (:dx vel) (:speed vel) delta)))
+                  (> (:dx vel) 0) (min (- (:max-x bounds) (:collision-size bounds)) (+ (:x pos) (* (:dx vel) (:speed vel) delta)))
+                  :else (:x pos))
+          new-y (cond
+                  (< (:dy vel) 0) (max (:min-y bounds) (+ (:y pos) (* (:dy vel) (:speed vel) delta)))
+                  (> (:dy vel) 0) (min (- (:max-y bounds) (:collision-size bounds)) (+ (:y pos) (* (:dy vel) (:speed vel) delta)))
+                  :else (:y pos))
+          
+          new-position (->Position new-x new-y)]
+      
+      (add-component! entity-id :position new-position))))
+
+(defn animation-system [delta]
+  (doseq [entity-id (get-entities-with-components [:animation-comp :velocity])]
+    (let [anim-comp (get-component entity-id :animation-comp)
+          vel-comp (get-component entity-id :velocity)
+          is-moving (or (not= 0 (:dx vel-comp)) (not= 0 (:dy vel-comp)))
+          
+          new-timer (if is-moving (+ (:timer anim-comp) delta) 0)
+          new-animation-comp (->AnimationComp (:current-anim anim-comp) (:animations anim-comp) new-timer (:frame-duration anim-comp))]
+      
+      (add-component! entity-id :animation-comp new-animation-comp))))
+
+(defn render-system [batch]
+  (let [entities (get-entities-with-components [:position :sprite-comp :render-order-comp])
+        sorted-entities (sort-by #(:layer (get-component % :render-order-comp)) entities)]
+    
+    (doseq [entity-id sorted-entities]
+      (let [pos (get-component entity-id :position)
+            sprite-comp (get-component entity-id :sprite-comp)
+            anim-comp (get-component entity-id :animation-comp)
+            vel-comp (get-component entity-id :velocity)
+            is-moving (or (not= 0 (:dx vel-comp)) (not= 0 (:dy vel-comp)))
+            
+            sprite-key (if (:facing-right sprite-comp) :standing-right :standing-left)
+            anim-key (if (:facing-right sprite-comp) :walking-right :walking-left)]
+        
+        (if is-moving
+          (let [animation (get (:animations anim-comp) anim-key)
+                current-frame (.getKeyFrame animation (:timer anim-comp) true)]
+            (.draw batch current-frame
+                   (float (:x pos)) (float (:y pos))
+                   (float (:width sprite-comp)) (float (:height sprite-comp))))
+          (let [sprite (get (:texture sprite-comp) sprite-key)]
+            (.setPosition sprite (float (:x pos)) (float (:y pos)))
+            (.draw sprite batch)))))))
+
 (def game-state (atom nil))
 
 
@@ -200,25 +338,30 @@
 
             hallway-bg-texture (Texture. "images/hallway_bg.png")]
         (.setToOrtho camera false 800 600)
-        (reset! game-state
-                (assoc (create-initial-state)
-                       :camera camera
-                       :batch batch
-                       :standing-sprite-right standing-sprite-right
-                       :standing-sprite-left standing-sprite-left
-                       :walking-animation-right walking-animation-right
-                       :walking-animation-left walking-animation-left
-                       :maia-standing-sprite-right maia-standing-sprite-right
-                       :maia-standing-sprite-left maia-standing-sprite-left
-                       :maia-walking-animation-right maia-walking-animation-right
-                       :maia-walking-animation-left maia-walking-animation-left
-                       :hallway-bg-texture hallway-bg-texture))))
+        
+        ;; Create ECS entities
+        (let [player-id (create-player-entity! 400 100 standing-sprite-right standing-sprite-left walking-animation-right walking-animation-left)
+              maia-id (create-npc-entity! 200 100 maia-standing-sprite-right maia-standing-sprite-left maia-walking-animation-right maia-walking-animation-left)]
+          
+          (reset! game-state
+                  (assoc (create-initial-state)
+                         :camera camera
+                         :batch batch
+                         :standing-sprite-right standing-sprite-right
+                         :standing-sprite-left standing-sprite-left
+                         :walking-animation-right walking-animation-right
+                         :walking-animation-left walking-animation-left
+                         :maia-standing-sprite-right maia-standing-sprite-right
+                         :maia-standing-sprite-left maia-standing-sprite-left
+                         :maia-walking-animation-right maia-walking-animation-right
+                         :maia-walking-animation-left maia-walking-animation-left
+                         :hallway-bg-texture hallway-bg-texture
+                         :player-id player-id
+                         :maia-id maia-id)))))
 
     (render
       []
-      (let [{:keys [camera batch standing-sprite-right standing-sprite-left
-                    walking-animation-right walking-animation-left animation-time
-                    player-x player-y hallway-bg-texture]} @game-state
+      (let [{:keys [camera batch hallway-bg-texture]} @game-state
             delta (.getDeltaTime Gdx/graphics)]
 
         ;; Clear screen
@@ -229,102 +372,21 @@
         (.update camera)
         (.setProjectionMatrix batch (.combined camera))
 
-        ;; Handle input
-        (let [moving-left? (.isKeyPressed Gdx/input Input$Keys/LEFT)
-              moving-right? (.isKeyPressed Gdx/input Input$Keys/RIGHT)
-              moving-up? (.isKeyPressed Gdx/input Input$Keys/UP)
-              moving-down? (.isKeyPressed Gdx/input Input$Keys/DOWN)
-              is-moving (or moving-left? moving-right? moving-up? moving-down?)
-
-              ;; Update facing direction when moving left or right
-              facing-right (cond
-                             moving-right? true
-                             moving-left? false
-                             :else (:facing-right @game-state))
-
-              ;; Calculate new position with boundary constraints
-              new-x (cond
-                      moving-left? (max floor-x-min (- player-x (* player-speed delta)))
-                      moving-right? (min (- floor-x-max player-collision-size) (+ player-x (* player-speed delta)))
-                      :else player-x)
-              new-y (cond
-                      moving-down? (max floor-y-min (- player-y (* player-speed delta)))
-                      moving-up? (min (- floor-y-max player-collision-size) (+ player-y (* player-speed delta)))
-                      :else player-y)
-
-              new-animation-time (if is-moving
-                                   (+ animation-time delta)
-                                   0)]
-
-          (swap! game-state assoc
-                 :player-x new-x
-                 :player-y new-y
-                 :animation-time new-animation-time
-                 :is-moving is-moving
-                 :facing-right facing-right))
-
-        ;; Update Maia NPC
-        (let [{:keys [maia-x maia-y maia-direction-timer maia-moving-right maia-animation-time]} @game-state
-              new-maia-direction-timer (+ maia-direction-timer delta)
-              
-              ;; Change direction periodically
-              [new-maia-moving-right new-timer] (if (>= new-maia-direction-timer npc-direction-change-interval)
-                                                  [(not maia-moving-right) 0]
-                                                  [maia-moving-right new-maia-direction-timer])
-              
-              ;; Calculate new Maia position
-              new-maia-x (if new-maia-moving-right
-                           (min (- floor-x-max player-collision-size) (+ maia-x (* npc-speed delta)))
-                           (max floor-x-min (- maia-x (* npc-speed delta))))
-              
-              new-maia-animation-time (+ maia-animation-time delta)]
-          
-          (swap! game-state assoc
-                 :maia-x new-maia-x
-                 :maia-direction-timer new-timer
-                 :maia-moving-right new-maia-moving-right
-                 :maia-facing-right new-maia-moving-right
-                 :maia-animation-time new-maia-animation-time))
+        ;; Run ECS systems
+        (input-system delta)
+        (ai-system delta)
+        (movement-system delta)
+        (animation-system delta)
 
         ;; Draw
         (.begin batch)
         ;; Draw background first
         (.draw batch hallway-bg-texture
                (float 0) (float 0)
-               (float 800) (float 600))  ;; Use the window size
+               (float 800) (float 600))
 
-        ;; Draw Maia NPC (before player so player appears in front)
-        (let [{:keys [maia-x maia-y maia-facing-right maia-animation-time
-                      maia-walking-animation-right maia-walking-animation-left
-                      maia-standing-sprite-right maia-standing-sprite-left]} @game-state
-              maia-current-animation (if maia-facing-right
-                                       maia-walking-animation-right
-                                       maia-walking-animation-left)
-              maia-current-standing (if maia-facing-right
-                                      maia-standing-sprite-right
-                                      maia-standing-sprite-left)
-              maia-current-frame (.getKeyFrame maia-current-animation maia-animation-time true)]
-          (.draw batch maia-current-frame
-                 (float maia-x) (float maia-y)
-                 (float npc-visual-width) (float npc-visual-height)))
-
-        ;; Draw player (after Maia so player appears in front)
-        (let [{:keys [is-moving facing-right]} @game-state
-              current-animation (if facing-right
-                                  walking-animation-right
-                                  walking-animation-left)
-              current-standing (if facing-right
-                                 standing-sprite-right
-                                 standing-sprite-left)]
-
-          (if is-moving
-            (let [current-frame (.getKeyFrame current-animation animation-time true)]
-              (.draw batch current-frame
-                     (float player-x) (float player-y)
-                     (float player-visual-width) (float player-visual-height)))
-            (do
-              (.setPosition current-standing (float player-x) (float player-y))
-              (.draw current-standing batch))))
+        ;; Render all entities
+        (render-system batch)
 
         (.end batch)))
 
