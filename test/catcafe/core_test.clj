@@ -4,9 +4,11 @@
 
 (deftest overlapping-rectangles
   (testing "Rectangles that overlap should collide"
-    (is (true? (check-collision 0 0 50 50 25 25 50 50)))))
+    (is (true? (check-collision {:x 0 :y 0 :width 50 :height 50}
+                                {:x 25 :y 25 :width 50 :height 50})))))
 
 (deftest non-overlapping-rectangles
   (testing "Rectangles that do not overlap should not collide"
-    (is (false? (check-collision 0 0 10 10 20 20 5 5)))))
+    (is (false? (check-collision {:x 0 :y 0 :width 10 :height 10}
+                                 {:x 20 :y 20 :width 5 :height 5})))))
 

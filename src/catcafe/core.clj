@@ -1,4 +1,7 @@
 (ns catcafe.core
+  (:require [catcafe.entity :as entity]
+            [catcafe.factories :as factories]
+            [catcafe.systems :as systems])
   (:import
     (com.badlogic.gdx
       Game
@@ -39,6 +42,7 @@
    :animation-time 0
    :is-moving false
    :facing-right true
+   :player-id nil
    ;; Maia NPC state
    :maia-x 200
    :maia-y 100
@@ -96,11 +100,14 @@
 
 
 (defn check-collision
-  [x1 y1 w1 h1 x2 y2 w2 h2]
-  (not (or (< (+ x1 w1) x2)
-           (> x1 (+ x2 w2))
-           (< (+ y1 h1) y2)
-           (> y1 (+ y2 h2)))))
+  "Collision check using component maps with :x :y :width :height keys."
+  [a b]
+  (let [{x1 :x y1 :y w1 :width h1 :height} a
+        {x2 :x y2 :y w2 :width h2 :height} b]
+    (not (or (< (+ x1 w1) x2)
+             (> x1 (+ x2 w2))
+             (< (+ y1 h1) y2)
+             (> y1 (+ y2 h2))))))
 
 
 (defn create-game
@@ -110,17 +117,6 @@
       []
       (let [camera (OrthographicCamera.)
             batch (SpriteBatch.)
-            ;; Create standing textures and sprites
-            standing-texture (Texture. "images/ysabelWalkingRight1.png")
-            standing-sprite-right (doto (Sprite. standing-texture)
-                                    (.setSize player-visual-width player-visual-height))
-            standing-sprite-left (doto (Sprite. standing-texture)
-                                   (.setSize player-visual-width player-visual-height)
-                                   (.flip true false))
-
-            ;; Create walking animations
-            walking-animation-right (create-walking-animation-right)
-            walking-animation-left (create-walking-animation-left)
 
             ;; Create Maia standing textures and sprites
             maia-standing-texture (Texture. "images/maiaWalkingRight1.png")
@@ -134,16 +130,14 @@
             maia-walking-animation-right (create-maia-walking-animation-right)
             maia-walking-animation-left (create-maia-walking-animation-left)
 
-            hallway-bg-texture (Texture. "images/hallway_bg.png")]
+            hallway-bg-texture (Texture. "images/hallway_bg.png")
+            player-id (factories/create-player)]
         (.setToOrtho camera false 800 600)
         (reset! game-state
                 (assoc (create-initial-state)
                        :camera camera
                        :batch batch
-                       :standing-sprite-right standing-sprite-right
-                       :standing-sprite-left standing-sprite-left
-                       :walking-animation-right walking-animation-right
-                       :walking-animation-left walking-animation-left
+                       :player-id player-id
                        :maia-standing-sprite-right maia-standing-sprite-right
                        :maia-standing-sprite-left maia-standing-sprite-left
                        :maia-walking-animation-right maia-walking-animation-right
@@ -152,9 +146,10 @@
 
     (render
       []
-      (let [{:keys [camera batch standing-sprite-right standing-sprite-left
-                    walking-animation-right walking-animation-left animation-time
-                    player-x player-y hallway-bg-texture]} @game-state
+      (let [{:keys [camera batch hallway-bg-texture
+                    maia-x maia-y maia-facing-right maia-animation-time
+                    maia-walking-animation-right maia-walking-animation-left
+                    maia-standing-sprite-right maia-standing-sprite-left]} @game-state
             delta (.getDeltaTime Gdx/graphics)]
 
         ;; Clear screen
@@ -165,39 +160,10 @@
         (.update camera)
         (.setProjectionMatrix batch (.combined camera))
 
-        ;; Handle input
-        (let [moving-left? (.isKeyPressed Gdx/input Input$Keys/LEFT)
-              moving-right? (.isKeyPressed Gdx/input Input$Keys/RIGHT)
-              moving-up? (.isKeyPressed Gdx/input Input$Keys/UP)
-              moving-down? (.isKeyPressed Gdx/input Input$Keys/DOWN)
-              is-moving (or moving-left? moving-right? moving-up? moving-down?)
-
-              ;; Update facing direction when moving left or right
-              facing-right (cond
-                             moving-right? true
-                             moving-left? false
-                             :else (:facing-right @game-state))
-
-              ;; Calculate new position with boundary constraints
-              new-x (cond
-                      moving-left? (max floor-x-min (- player-x (* player-speed delta)))
-                      moving-right? (min (- floor-x-max player-collision-size) (+ player-x (* player-speed delta)))
-                      :else player-x)
-              new-y (cond
-                      moving-down? (max floor-y-min (- player-y (* player-speed delta)))
-                      moving-up? (min (- floor-y-max player-collision-size) (+ player-y (* player-speed delta)))
-                      :else player-y)
-
-              new-animation-time (if is-moving
-                                   (+ animation-time delta)
-                                   0)]
-
-          (swap! game-state assoc
-                 :player-x new-x
-                 :player-y new-y
-                 :animation-time new-animation-time
-                 :is-moving is-moving
-                 :facing-right facing-right))
+        ;; Run ECS systems for the player entity
+        (systems/input-system delta)
+        (systems/movement-system delta)
+        (systems/animation-system delta)
 
         ;; Update Maia NPC
         (let [{:keys [maia-x maia-y maia-direction-timer maia-moving-right maia-animation-time]} @game-state
@@ -244,39 +210,25 @@
                  (float maia-x) (float maia-y)
                  (float npc-visual-width) (float npc-visual-height)))
 
-        ;; Draw player (after Maia so player appears in front)
-        (let [{:keys [is-moving facing-right]} @game-state
-              current-animation (if facing-right
-                                  walking-animation-right
-                                  walking-animation-left)
-              current-standing (if facing-right
-                                 standing-sprite-right
-                                 standing-sprite-left)]
-
-          (if is-moving
-            (let [current-frame (.getKeyFrame current-animation animation-time true)]
-              (.draw batch current-frame
-                     (float player-x) (float player-y)
-                     (float player-visual-width) (float player-visual-height)))
-            (do
-              (.setPosition current-standing (float player-x) (float player-y))
-              (.draw current-standing batch))))
+        ;; Draw player entity via ECS render system
+        (systems/render-system batch)
 
         (.end batch)))
 
     (dispose
       []
-      (let [{:keys [batch standing-sprite-right
-                    walking-animation-right walking-animation-left
+      (let [{:keys [batch
                     maia-standing-sprite-right maia-walking-animation-right maia-walking-animation-left
                     hallway-bg-texture]} @game-state]
         (.dispose batch)
-        (.dispose (.getTexture standing-sprite-right))
-        ;; No need to dispose standing-sprite-left as it uses the same texture
 
-        ;; Dispose player walking animation textures
-        (dispose-animation-textures walking-animation-right)
-        (dispose-animation-textures walking-animation-left)
+        ;; Dispose all entity resources
+        (doseq [[_ {:keys [sprite animation]}] @entity/registry]
+          (when sprite
+            (.dispose (.getTexture (:standing-right sprite))))
+          (when animation
+            (dispose-animation-textures (:walk-right animation))
+            (dispose-animation-textures (:walk-left animation))))
 
         ;; Dispose Maia textures
         (.dispose (.getTexture maia-standing-sprite-right))
