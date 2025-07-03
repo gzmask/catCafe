@@ -234,22 +234,6 @@
 (def game-state (atom nil))
 
 
-(defn create-initial-state
-  []
-  {:player-x 400
-   :player-y 100
-   :animation-time 0
-   :is-moving false
-   :facing-right true
-   ;; Maia NPC state
-   :maia-x 200
-   :maia-y 100
-   :maia-animation-time 0
-   :maia-facing-right true
-   :maia-direction-timer 0
-   :maia-moving-right true})
-
-
 (defn create-walking-animation-right
   []
   (let [walking1 (Texture. "images/ysabelWalkingRight1.png")
@@ -344,20 +328,12 @@
               maia-id (create-npc-entity! 200 100 maia-standing-sprite-right maia-standing-sprite-left maia-walking-animation-right maia-walking-animation-left)]
           
           (reset! game-state
-                  (assoc (create-initial-state)
+                  {
                          :camera camera
                          :batch batch
-                         :standing-sprite-right standing-sprite-right
-                         :standing-sprite-left standing-sprite-left
-                         :walking-animation-right walking-animation-right
-                         :walking-animation-left walking-animation-left
-                         :maia-standing-sprite-right maia-standing-sprite-right
-                         :maia-standing-sprite-left maia-standing-sprite-left
-                         :maia-walking-animation-right maia-walking-animation-right
-                         :maia-walking-animation-left maia-walking-animation-left
                          :hallway-bg-texture hallway-bg-texture
                          :player-id player-id
-                         :maia-id maia-id)))))
+                         :maia-id maia-id}))))
 
     (render
       []
