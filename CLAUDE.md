@@ -14,9 +14,9 @@ for any task:
  2. create a [task]-todo.md file with the plan that you think carefully to make 
  3. perform each todo and check off them 
  4. add short summary when you check them off
- 5. after all todos are checked off, perform test
+ 5. after each todo is checked off, perform lint and test
  5. once task is done, create an overall summary
- 6. run the game and ask to verify
+ 6. run the game for 15 seconds and ask to verify
 
 ## Common Development Commands
 
@@ -31,6 +31,12 @@ Note: Uses `-XstartOnFirstThread` JVM option required for LWJGL on macOS.
 clj -X:test
 ```
 This runs all tests via the test runner in `test/catcafe/test_runner.clj`.
+
+### Linting
+```bash
+clj-kondo --lint target_file.clj --config '{:output {:format :json}}'
+```
+a syntax type error of "EOF while reading" is a sign of unmatched parenthesis
 
 ### Project Dependencies
 Dependencies are managed via `deps.edn`. The project uses:
