@@ -1,4 +1,5 @@
 (ns catcafe.core
+  (:require [clojure.set])
   (:import
     (com.badlogic.gdx
       Game
@@ -29,6 +30,69 @@
 (def ^:const npc-visual-width 121.5)
 (def ^:const npc-visual-height 175.5)
 (def ^:const npc-direction-change-interval 3.0) ;; Change direction every 3 seconds
+
+;; ECS Infrastructure
+;; Entity management
+(def next-entity-id (atom 0))
+(def entities (atom #{}))
+
+(defn create-entity! []
+  (let [id (swap! next-entity-id inc)]
+    (swap! entities conj id)
+    id))
+
+(defn destroy-entity! [entity-id]
+  (swap! entities disj entity-id))
+
+;; Component management - World state: {entity-id {component-type component-data}}
+(def world (atom {}))
+
+(defn add-component! [entity-id component-type component-data]
+  (swap! world assoc-in [entity-id component-type] component-data))
+
+(defn get-component [entity-id component-type]
+  (get-in @world [entity-id component-type]))
+
+(defn has-component? [entity-id component-type]
+  (contains? (get @world entity-id {}) component-type))
+
+(defn remove-component! [entity-id component-type]
+  (swap! world update entity-id dissoc component-type))
+
+;; Entity querying
+(defn get-entities-with-component [component-type]
+  (->> @world
+       (filter (fn [[entity-id components]]
+                 (contains? components component-type)))
+       (map first)
+       set))
+
+(defn get-entities-with-components [component-types]
+  (if (empty? component-types)
+    #{}
+    (let [entity-sets (map get-entities-with-component component-types)]
+      (apply clojure.set/intersection entity-sets))))
+
+;; Component record definitions
+(defrecord Position [x y])
+(defrecord Velocity [dx dy speed])
+(defrecord Animation [current-anim animations timer frame-duration])
+(defrecord Sprite [texture width height facing-right])
+(defrecord Input [keys active-keys])
+(defrecord AI [type direction-timer direction-change-interval moving-right])
+(defrecord Bounds [min-x max-x min-y max-y collision-size])
+(defrecord RenderOrder [layer])
+
+;; Component constructor functions
+(defn position [x y] (->Position x y))
+(defn velocity [dx dy speed] (->Velocity dx dy speed))
+(defn animation [current-anim animations timer frame-duration] (->Animation current-anim animations timer frame-duration))
+(defn sprite [texture width height facing-right] (->Sprite texture width height facing-right))
+(defn input [keys active-keys] (->Input keys active-keys))
+(defn ai [type direction-timer direction-change-interval moving-right] (->AI type direction-timer direction-change-interval moving-right))
+(defn bounds [min-x max-x min-y max-y collision-size] (->Bounds min-x max-x min-y max-y collision-size))
+(defn render-order [layer] (->RenderOrder layer))
+
 (def game-state (atom nil))
 
 
