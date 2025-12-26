@@ -26,6 +26,30 @@ clj -M:run-game
 ```
 Note: Uses `-XstartOnFirstThread` JVM option required for LWJGL on macOS.
 
+### Running Game with Embedded REPL (Recommended!)
+```bash
+clj -M:run-game-with-repl
+```
+This starts the game window AND an nREPL server on port 7889. Connect via clojure-mcp to control the running game interactively!
+
+### REPL Helper Functions
+**Important:** On macOS, you must use the embedded REPL approach (`clj -M:run-game-with-repl`) because the `-XstartOnFirstThread` JVM requirement means the game must run on the main thread. You cannot start/stop the game window from a standalone REPL.
+
+When connected to the embedded REPL (port 7889), first require the repl namespace:
+```clojure
+(require '[catcafe.repl :as repl])
+```
+
+Then use these functions:
+- `(repl/list-repl-commands)` - Show all available commands
+- `(repl/debug-entities)` - Inspect ECS entities and components
+- `(repl/get-player-position)` / `(repl/get-maia-position)` - Get entity positions
+
+**Programmatic Control Functions:**
+- `(repl/simulate-move! :up 2)` - Move player in direction (:up/:down/:left/:right) for N seconds
+- `(repl/stop-all-movement!)` - Stop all simulated movement
+- `(repl/get-active-keys)` - Show currently pressed keys
+
 ### Running Tests
 ```bash
 clj -X:test
